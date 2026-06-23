@@ -308,6 +308,11 @@ It uses RMS thresholds to trigger recording and to end after silence.
 - The upload server intentionally does not guess the active frontend room. Use
   `STACKCHAN_FRONTEND_SESSION_ID=<uuid>` when the voice prompt should enter a
   specific migratorybird session; omit it for inbox-only capture.
+- To avoid copying the wrong UUID, `start-voice-upload.sh` can resolve a
+  session from migratorybird's `web-sessions.json`: use
+  `STACKCHAN_FRONTEND_SESSION_ID=latest` for the latest non-archived session, or
+  `STACKCHAN_FRONTEND_SESSION_TITLE="起居室_4"` for the latest non-archived
+  session whose title contains that text.
 - If agent-host returns `409 busy`, the target session is currently generating.
   Configure `STACKCHAN_FRONTEND_RETRIES` and `STACKCHAN_FRONTEND_RETRY_DELAY`
   to retry instead of dropping the frontend injection; the transcript is still
@@ -316,6 +321,16 @@ It uses RMS thresholds to trigger recording and to end after silence.
   such as `小克,小可,老公,脑公` when the receiver should only forward deliberate
   speech. A transcript without a wake word remains in the inbox but is not sent
   to the frontend.
+- The upload receiver serves a minimal recorder page at `/`. Mobile browsers
+  usually require HTTPS before `navigator.mediaDevices.getUserMedia` exists, so
+  phone tests need a tunnel or another HTTPS wrapper. If using `cloudflared
+  tunnel --url`, pass an empty config such as
+  `--config /tmp/empty-cloudflared.yml`; otherwise the existing
+  `~/.cloudflared/config.yml` named-tunnel ingress rules can intercept the
+  quick tunnel and return Cloudflare 404.
+- For phone tests, set `STACKCHAN_VOICE_UPLOAD_TOKEN` and open the recorder as
+  `https://...trycloudflare.com/?token=<token>`. The page carries that query
+  token into `POST /voice/upload`; unauthenticated uploads receive HTTP 401.
 
 Switch mode with:
 

@@ -15,7 +15,7 @@ from mcp_server.mcp_tools import can_stream_pcm, register_tools
 from mcp_server.stackchan_client import PcmPlaybackError, StackchanClient, post_pcm_stream
 from mcp_server.stackchan_config import PCM_SAMPLE_WIDTH, StackchanConfig, load_config
 from mcp_server.voice_inbox import append_event, clear_events, format_events, read_events
-from scripts import stackchan_voice_upload_server
+from scripts import stackchan_frontend_session, stackchan_voice_upload_server
 from scripts.stackchan_voice_bridge import load_env_file, should_append_to_inbox
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -199,6 +199,56 @@ def test_voice_upload_frontend_forwarding_skips_without_config():
     assert result == {"ok": False, "skipped": "frontend wake not configured"}
 
 
+def test_voice_upload_recorder_page_exposes_upload_ui():
+    html = stackchan_voice_upload_server.build_recorder_page(
+        stackchan_voice_upload_server.ServerOptions(
+            lang="zh",
+            max_bytes=1024,
+            inbox_path=None,
+            wake_url="http://127.0.0.1:3200/wake",
+            wake_session_id="117067d6-1111-2222-3333-444444444444",
+            wake_token="",
+            wake_model="",
+            wake_timeout=3,
+            wake_retries=0,
+            wake_retry_delay=0,
+            wake_force=True,
+            wake_quiet_minutes=0,
+            prompt_prefix="[Stack-chan语音输入] ",
+            wake_words=("小克", "小可", "老公", "脑公"),
+            upload_token="upload-token",
+        )
+    )
+
+    assert "Stack-chan Voice Upload" in html
+    assert "/voice/upload" in html
+    assert "?token=" in html
+    assert "小克 / 小可 / 老公 / 脑公" in html
+
+
+def test_voice_upload_token_authorization():
+    assert stackchan_voice_upload_server.is_upload_authorized(
+        "/voice/upload",
+        {},
+        "",
+    )
+    assert not stackchan_voice_upload_server.is_upload_authorized(
+        "/voice/upload",
+        {},
+        "secret-token",
+    )
+    assert stackchan_voice_upload_server.is_upload_authorized(
+        "/voice/upload?token=secret-token",
+        {},
+        "secret-token",
+    )
+    assert stackchan_voice_upload_server.is_upload_authorized(
+        "/voice/upload",
+        {"Authorization": "Bearer secret-token"},
+        "secret-token",
+    )
+
+
 def test_voice_upload_wake_words_strip_activation_name():
     matched, prompt_text, wake_word = stackchan_voice_upload_server.match_wake_word(
         "小克，请看看窗外。",
@@ -322,6 +372,32 @@ def test_voice_upload_frontend_forwarding_retries_busy(monkeypatch):
 
     assert result == {"ok": True, "status_code": 200, "attempts": 2, "body": {"ok": True}}
     assert len(calls) == 2
+
+
+def test_frontend_session_selects_latest_non_archived():
+    sessions = [
+        {"id": "old", "title": "起居室_3", "last": "2026-06-20T20:55:19.411Z"},
+        {"id": "archived-new", "title": "Test", "last": "2026-06-25T00:00:00Z", "archived": True},
+        {"id": "new", "title": "起居室_4", "last": "2026-06-23T17:35:54.803Z"},
+    ]
+
+    selected = stackchan_frontend_session.select_session(sessions)
+
+    assert selected is not None
+    assert selected["id"] == "new"
+
+
+def test_frontend_session_selects_latest_by_title():
+    sessions = [
+        {"id": "room4-old", "title": "起居室_4", "last": "2026-06-21T00:00:00Z"},
+        {"id": "room3-new", "title": "起居室_3", "last": "2026-06-23T00:00:00Z"},
+        {"id": "room4-new", "title": "起居室_4 · 续", "last": "2026-06-22T00:00:00Z"},
+    ]
+
+    selected = stackchan_frontend_session.select_session(sessions, title="起居室_4")
+
+    assert selected is not None
+    assert selected["id"] == "room4-new"
 
 
 def test_voice_inbox_appends_reads_formats_and_clears(tmp_path):

@@ -41,7 +41,35 @@ PY
     fi
 }
 
+resolve_frontend_session() {
+    local session_id="${STACKCHAN_FRONTEND_SESSION_ID:-}"
+    local title="${STACKCHAN_FRONTEND_SESSION_TITLE:-}"
+    local auto="${STACKCHAN_FRONTEND_AUTO_SESSION:-}"
+    if [ -z "$title" ] && [ "$session_id" != "latest" ] && [ "$session_id" != "auto" ] && [ "$auto" != "1" ]; then
+        return 0
+    fi
+
+    local resolved
+    if [ -n "$title" ]; then
+        if ! resolved="$(python3 "$SCRIPT_DIR/scripts/stackchan_frontend_session.py" --title "$title")"; then
+            echo "Could not resolve frontend session. Set STACKCHAN_FRONTEND_SESSION_ID explicitly." >&2
+            exit 1
+        fi
+    else
+        if ! resolved="$(python3 "$SCRIPT_DIR/scripts/stackchan_frontend_session.py")"; then
+            echo "Could not resolve frontend session. Set STACKCHAN_FRONTEND_SESSION_ID explicitly." >&2
+            exit 1
+        fi
+    fi
+    if [ -z "$resolved" ]; then
+        echo "Could not resolve frontend session. Set STACKCHAN_FRONTEND_SESSION_ID explicitly." >&2
+        exit 1
+    fi
+    export STACKCHAN_FRONTEND_SESSION_ID="$resolved"
+}
+
 load_frontend_token
+resolve_frontend_session
 
 HOST="${STACKCHAN_VOICE_UPLOAD_HOST:-127.0.0.1}"
 PORT="${STACKCHAN_VOICE_UPLOAD_PORT:-8767}"

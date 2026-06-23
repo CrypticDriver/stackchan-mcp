@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -45,6 +45,7 @@ class ServerOptions:
     wake_quiet_minutes: int
     prompt_prefix: str
     wake_words: tuple[str, ...]
+    upload_token: str
 
 
 def utc_now() -> str:
@@ -53,11 +54,229 @@ def utc_now() -> str:
 
 def write_json(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
+    send_json_headers(handler, status, len(body))
     handler.wfile.write(body)
+
+
+def send_json_headers(handler: BaseHTTPRequestHandler, status: int, content_length: int) -> None:
+    handler.send_response(status)
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(content_length))
+    handler.end_headers()
+
+
+def write_html(handler: BaseHTTPRequestHandler, status: int, html: str) -> None:
+    body = html.encode("utf-8")
+    send_html_headers(handler, status, len(body))
+    handler.wfile.write(body)
+
+
+def send_html_headers(handler: BaseHTTPRequestHandler, status: int, content_length: int) -> None:
+    handler.send_response(status)
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(content_length))
+    handler.end_headers()
+
+
+def build_recorder_page(options: ServerOptions) -> str:
+    wake_words = " / ".join(options.wake_words) if options.wake_words else "未启用"
+    frontend = "enabled" if options.wake_url and options.wake_session_id else "inbox only"
+    upload_path = "/voice/upload"
+    return f"""<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stack-chan Voice Upload</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f6efe4;
+      --ink: #3b332b;
+      --muted: #8d7c6d;
+      --line: #dccbb5;
+      --accent: #2e8b57;
+      --danger: #b25a42;
+      --card: #fffaf2;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }}
+    main {{
+      width: min(720px, 100%);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 12px 30px rgba(60, 42, 24, 0.08);
+    }}
+    h1 {{ margin: 0 0 8px; font-size: 24px; letter-spacing: 0; }}
+    p {{ line-height: 1.6; }}
+    .meta {{ color: var(--muted); font-size: 14px; margin-top: 0; }}
+    .controls {{ display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0; }}
+    button, label.file {{
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }}
+    button.primary {{ background: var(--accent); color: white; border-color: var(--accent); }}
+    button.danger {{ background: var(--danger); color: white; border-color: var(--danger); }}
+    button:disabled {{ opacity: 0.45; cursor: not-allowed; }}
+    input[type="file"] {{ display: none; }}
+    pre {{
+      min-height: 120px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f2eadf;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 14px;
+    }}
+    .hint {{ font-size: 14px; color: var(--muted); }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Stack-chan Voice Upload</h1>
+    <p class="meta">frontend: {frontend} · wake words: {wake_words}</p>
+    <p>说话开头带“小克 / 小可 / 老公 / 脑公”之一，才会转发到前端；不带唤醒词的录音只进本地 inbox。</p>
+    <div class="controls">
+      <button id="start" class="primary">开始录音</button>
+      <button id="stop" class="danger" disabled>停止并发送</button>
+      <label class="file">上传音频文件<input id="file" type="file" accept="audio/*" capture></label>
+    </div>
+    <p class="hint">如果手机浏览器因为 HTTP 禁止麦克风，请用“上传音频文件”。直接录音会在浏览器里编码成 WAV 再发送。</p>
+    <pre id="log">Ready.</pre>
+  </main>
+  <script>
+    const log = document.getElementById('log');
+    const startBtn = document.getElementById('start');
+    const stopBtn = document.getElementById('stop');
+    const fileInput = document.getElementById('file');
+    let audioContext, stream, source, processor, chunks, sampleRate;
+
+    function say(message, data) {{
+      log.textContent = data ? message + "\\n" + JSON.stringify(data, null, 2) : message;
+    }}
+
+    function uploadUrl() {{
+      const token = new URLSearchParams(window.location.search).get('token') || '';
+      return token ? '{upload_path}?token=' + encodeURIComponent(token) : '{upload_path}';
+    }}
+
+    async function postAudio(blob) {{
+      say('Uploading...');
+      const response = await fetch(uploadUrl(), {{
+        method: 'POST',
+        headers: {{ 'Content-Type': blob.type || 'audio/wav' }},
+        body: blob,
+      }});
+      const data = await response.json().catch(() => ({{ ok: false, error: 'non-json response' }}));
+      if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+      say('Done.', data);
+    }}
+
+    function encodeWav(buffers, rate) {{
+      const length = buffers.reduce((n, b) => n + b.length, 0);
+      const data = new Float32Array(length);
+      let offset = 0;
+      for (const buffer of buffers) {{
+        data.set(buffer, offset);
+        offset += buffer.length;
+      }}
+      const wav = new ArrayBuffer(44 + data.length * 2);
+      const view = new DataView(wav);
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + data.length * 2, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, rate, true);
+      view.setUint32(28, rate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, data.length * 2, true);
+      let pos = 44;
+      for (let i = 0; i < data.length; i++) {{
+        const sample = Math.max(-1, Math.min(1, data[i]));
+        view.setInt16(pos, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        pos += 2;
+      }}
+      return new Blob([view], {{ type: 'audio/wav' }});
+    }}
+
+    function writeString(view, offset, value) {{
+      for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+    }}
+
+    startBtn.addEventListener('click', async () => {{
+      try {{
+        stream = await navigator.mediaDevices.getUserMedia({{ audio: true }});
+        audioContext = new AudioContext();
+        sampleRate = audioContext.sampleRate;
+        source = audioContext.createMediaStreamSource(stream);
+        processor = audioContext.createScriptProcessor(4096, 1, 1);
+        chunks = [];
+        processor.onaudioprocess = event => {{
+          chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+        }};
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        say('Recording...');
+      }} catch (error) {{
+        say('Mic unavailable: ' + error.message);
+      }}
+    }});
+
+    stopBtn.addEventListener('click', async () => {{
+      try {{
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        processor?.disconnect();
+        source?.disconnect();
+        stream?.getTracks().forEach(track => track.stop());
+        const blob = encodeWav(chunks || [], sampleRate || 48000);
+        await audioContext?.close();
+        await postAudio(blob);
+      }} catch (error) {{
+        say('Upload failed: ' + error.message);
+      }}
+    }});
+
+    fileInput.addEventListener('change', async () => {{
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      try {{
+        await postAudio(file);
+      }} catch (error) {{
+        say('Upload failed: ' + error.message);
+      }} finally {{
+        fileInput.value = '';
+      }}
+    }});
+  </script>
+</body>
+</html>"""
 
 
 def save_uploaded_wav(audio_data: bytes, audio_dir: Path = AUDIO_DIR) -> Path:
@@ -135,6 +354,16 @@ def match_wake_word(text: str, wake_words: tuple[str, ...]) -> tuple[bool, str, 
                 stripped = after.lstrip(" ，,。.!！?？:：、")
                 return True, stripped or clean_text, word
     return False, clean_text, ""
+
+
+def is_upload_authorized(path: str, headers: Any, token: str) -> bool:
+    if not token:
+        return True
+    url = urlparse(path)
+    query_token = parse_qs(url.query).get("token", [""])[0]
+    auth = headers.get("Authorization", "")
+    header_token = headers.get("X-Stackchan-Upload-Token", "")
+    return query_token == token or auth == f"Bearer {token}" or header_token == token
 
 
 def forward_to_frontend(
@@ -221,24 +450,57 @@ class VoiceUploadHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
-        if path != "/health":
-            write_json(self, 404, {"ok": False, "error": "not found"})
+        if path == "/" or path == "/recorder":
+            write_html(self, 200, build_recorder_page(self.server.options))
             return
-        write_json(
-            self,
-            200,
-            {
+        if path == "/health":
+            write_json(
+                self,
+                200,
+                {
+                    "ok": True,
+                    "service": "stackchan_voice_upload_server",
+                    "inbox": str(self.server.options.inbox_path) if self.server.options.inbox_path else None,
+                    "frontend": bool(self.server.options.wake_url and self.server.options.wake_session_id),
+                },
+            )
+            return
+        write_json(self, 404, {"ok": False, "error": "not found"})
+
+    def do_HEAD(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/" or path == "/recorder":
+            send_html_headers(self, 200, len(build_recorder_page(self.server.options).encode("utf-8")))
+            return
+        if path == "/health":
+            payload = {
                 "ok": True,
                 "service": "stackchan_voice_upload_server",
                 "inbox": str(self.server.options.inbox_path) if self.server.options.inbox_path else None,
                 "frontend": bool(self.server.options.wake_url and self.server.options.wake_session_id),
-            },
-        )
+            }
+            send_json_headers(
+                self,
+                200,
+                len(json.dumps(payload, ensure_ascii=False).encode("utf-8")),
+            )
+            return
+        send_json_headers(self, 404, len(b'{"ok":false,"error":"not found"}'))
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         if path != "/voice/upload":
             write_json(self, 404, {"ok": False, "error": "not found"})
+            return
+        if not self.is_upload_authorized():
+            write_json(self, 401, {"ok": False, "error": "unauthorized"})
             return
 
         if not self.server.config.fish_audio_key:
@@ -310,6 +572,9 @@ class VoiceUploadHandler(BaseHTTPRequestHandler):
                 "frontend": frontend,
             },
         )
+
+    def is_upload_authorized(self) -> bool:
+        return is_upload_authorized(self.path, self.headers, self.server.options.upload_token)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -388,6 +653,11 @@ def build_parser() -> argparse.ArgumentParser:
             "the transcript starts with one of these words; inbox logging still happens."
         ),
     )
+    parser.add_argument(
+        "--upload-token",
+        default=os.environ.get("STACKCHAN_VOICE_UPLOAD_TOKEN", ""),
+        help="Optional token required for POST /voice/upload. Use ?token=... on the recorder page.",
+    )
     return parser
 
 
@@ -413,6 +683,7 @@ def main() -> int:
         wake_quiet_minutes=args.wake_quiet_minutes,
         prompt_prefix=args.prompt_prefix,
         wake_words=parse_wake_words(args.wake_words),
+        upload_token=args.upload_token,
     )
     server = VoiceUploadServer((args.host, args.port), VoiceUploadHandler, config=config, options=options)
     print(

@@ -160,6 +160,51 @@ STACKCHAN_VOICE_UPLOAD_HOST=0.0.0.0 \
 ./start-voice-upload.sh
 ```
 
+For fewer copy-paste mistakes, the session can also be resolved from the
+migratorybird frontend registry:
+
+```bash
+# Latest non-archived frontend session.
+STACKCHAN_FRONTEND_SESSION_ID=latest \
+STACKCHAN_FRONTEND_WAKE_URL="http://127.0.0.1:3200/wake" \
+STACKCHAN_VOICE_WAKE_WORDS="小克,小可,老公,脑公" \
+./start-voice-upload.sh
+
+# Or the latest non-archived session whose title contains 起居室_4.
+STACKCHAN_FRONTEND_SESSION_TITLE="起居室_4" \
+STACKCHAN_FRONTEND_WAKE_URL="http://127.0.0.1:3200/wake" \
+STACKCHAN_VOICE_WAKE_WORDS="小克,小可,老公,脑公" \
+./start-voice-upload.sh
+```
+
+The receiver also serves a small recorder page at `/`. On mobile browsers,
+microphone access usually requires HTTPS. For a temporary phone test, run the
+receiver with a one-off upload token, then expose it through a quick tunnel:
+
+```bash
+# Terminal 1: local receiver with token protection.
+STACKCHAN_FRONTEND_SESSION_ID=latest \
+STACKCHAN_FRONTEND_WAKE_URL="http://127.0.0.1:3200/wake" \
+STACKCHAN_FRONTEND_RETRIES=5 \
+STACKCHAN_FRONTEND_RETRY_DELAY=3 \
+STACKCHAN_VOICE_WAKE_WORDS="小克,小可,老公,脑公" \
+STACKCHAN_VOICE_UPLOAD_HOST=0.0.0.0 \
+STACKCHAN_VOICE_UPLOAD_TOKEN="<random-token>" \
+./start-voice-upload.sh
+
+# Terminal 2: HTTPS tunnel for phone microphone access.
+# Use an empty config so existing named-tunnel ingress rules do not swallow
+# the quick tunnel and return Cloudflare 404.
+touch /tmp/empty-cloudflared.yml
+cloudflared tunnel --config /tmp/empty-cloudflared.yml \
+  --url http://127.0.0.1:8767 \
+  --protocol http2 \
+  --no-autoupdate
+```
+
+Open the printed `https://...trycloudflare.com/?token=<random-token>` URL on
+the phone. Say one of the wake names first, for example `老公，听得到吗？`.
+
 Without `STACKCHAN_FRONTEND_SESSION_ID`, the receiver only records transcripts
 to the voice inbox and never guesses which room should receive them.
 `STACKCHAN_FRONTEND_RETRIES` is useful when the target frontend session is
@@ -171,6 +216,8 @@ the frontend token in this repo.
 When `STACKCHAN_VOICE_WAKE_WORDS` is set, only transcripts that start with one
 of those activation names are forwarded to the frontend. Other transcripts are
 still written to the inbox for debugging, but they do not interrupt the session.
+When `STACKCHAN_VOICE_UPLOAD_TOKEN` is set, `POST /voice/upload` requires
+`?token=...`, `Authorization: Bearer ...`, or `X-Stackchan-Upload-Token`.
 
 ## Faces
 
