@@ -76,6 +76,9 @@ PORT="${STACKCHAN_VOICE_UPLOAD_PORT:-8767}"
 LOG_FILE="${STACKCHAN_VOICE_UPLOAD_LOG:-/tmp/stackchan_voice_upload.log}"
 PID_FILE="${STACKCHAN_VOICE_UPLOAD_PIDFILE:-/tmp/stackchan_voice_upload.pid}"
 LANGUAGE="${STACKCHAN_VOICE_LANG:-zh}"
+PUBLIC_URL="${STACKCHAN_VOICE_PUBLIC_URL:-https://stackchan-voice.migratorybird.xyz}"
+CLOUDFLARED_LABEL="${STACKCHAN_CLOUDFLARED_LAUNCHD_LABEL:-xyz.migratorybird.cloudflared}"
+FRONTEND_HEALTH_URL="${STACKCHAN_FRONTEND_HEALTH_URL:-http://127.0.0.1:3200/health}"
 
 is_running() {
     [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
@@ -86,7 +89,48 @@ port_owner() {
 }
 
 health_url() {
-    echo "http://$HOST:$PORT/health"
+    local check_host="$HOST"
+    if [ "$check_host" = "0.0.0.0" ] || [ "$check_host" = "::" ]; then
+        check_host="127.0.0.1"
+    fi
+    echo "http://$check_host:$PORT/health"
+}
+
+public_health_url() {
+    if [ -n "$PUBLIC_URL" ]; then
+        echo "${PUBLIC_URL%/}/health"
+    fi
+}
+
+recorder_url() {
+    local url="${PUBLIC_URL%/}/"
+    if [ -n "${STACKCHAN_VOICE_UPLOAD_TOKEN:-}" ]; then
+        echo "${url}?token=${STACKCHAN_VOICE_UPLOAD_TOKEN}"
+    else
+        echo "$url"
+    fi
+}
+
+check_url() {
+    local label="$1"
+    local url="$2"
+    if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
+        echo "[ok] $label: $url"
+    else
+        echo "[fail] $label: $url"
+    fi
+}
+
+check_cloudflared() {
+    if launchctl print "gui/$(id -u)/$CLOUDFLARED_LABEL" >/dev/null 2>&1; then
+        local state
+        state="$(launchctl print "gui/$(id -u)/$CLOUDFLARED_LABEL" 2>/dev/null | awk -F'= ' '/state =/ {print $2; exit}')"
+        echo "[ok] cloudflared launchd: $CLOUDFLARED_LABEL (${state:-unknown})"
+    elif pgrep -f "cloudflared tunnel run" >/dev/null 2>&1; then
+        echo "[ok] cloudflared process: running"
+    else
+        echo "[fail] cloudflared: not running"
+    fi
 }
 
 wait_for_health() {
@@ -120,6 +164,9 @@ case "${1:-start}" in
         echo "Started Stack-chan voice upload receiver: PID $(cat "$PID_FILE")"
         echo "URL: http://$HOST:$PORT/voice/upload"
         echo "Health: $(health_url)"
+        if [ -n "$PUBLIC_URL" ]; then
+            echo "Public recorder: $(recorder_url)"
+        fi
         echo "Log: $LOG_FILE"
         if wait_for_health; then
             echo "Status: ready"
@@ -150,11 +197,31 @@ case "${1:-start}" in
     status)
         if is_running; then
             echo "Stack-chan voice upload receiver running: PID $(cat "$PID_FILE")"
-            curl -fsS --max-time 3 "$(health_url)" || true
-            echo ""
+            check_url "local upload health" "$(health_url)"
+            if [ -n "$PUBLIC_URL" ]; then
+                check_url "public upload health" "$(public_health_url)"
+                echo "Recorder: $(recorder_url)"
+            fi
+            check_url "frontend agent-host" "$FRONTEND_HEALTH_URL"
+            check_cloudflared
+            if [ -n "${STACKCHAN_FRONTEND_SESSION_ID:-}" ]; then
+                echo "Frontend session: ${STACKCHAN_FRONTEND_SESSION_ID}"
+            else
+                echo "Frontend session: disabled"
+            fi
+            if [ -n "${STACKCHAN_VOICE_WAKE_WORDS:-}" ]; then
+                echo "Wake words: ${STACKCHAN_VOICE_WAKE_WORDS}"
+            else
+                echo "Wake words: disabled"
+            fi
         else
             rm -f "$PID_FILE"
             echo "Stack-chan voice upload receiver is not running."
+            if [ -n "$PUBLIC_URL" ]; then
+                check_url "public upload health" "$(public_health_url)"
+            fi
+            check_url "frontend agent-host" "$FRONTEND_HEALTH_URL"
+            check_cloudflared
         fi
         ;;
     *)

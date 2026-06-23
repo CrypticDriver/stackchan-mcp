@@ -331,6 +331,15 @@ It uses RMS thresholds to trigger recording and to end after silence.
 - For phone tests, set `STACKCHAN_VOICE_UPLOAD_TOKEN` and open the recorder as
   `https://...trycloudflare.com/?token=<token>`. The page carries that query
   token into `POST /voice/upload`; unauthenticated uploads receive HTTP 401.
+- For daily phone use on Isa's Mac, use the named Cloudflare tunnel hostname
+  `https://stackchan-voice.migratorybird.xyz/?token=<token>`. The route lives in
+  `~/.cloudflared/config.yml` and points to `http://localhost:8767`. Keep this
+  as a single-level subdomain; `voice.stackchan.migratorybird.xyz` is a
+  second-level subdomain and may fail TLS handshakes with the default Cloudflare
+  certificate coverage.
+- `./start-voice-upload.sh status` checks the local receiver, public HTTPS
+  route, frontend `agent-host`, launchd-managed `cloudflared`, resolved frontend
+  session, and wake-word configuration.
 
 Switch mode with:
 

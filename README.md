@@ -205,6 +205,26 @@ cloudflared tunnel --config /tmp/empty-cloudflared.yml \
 Open the printed `https://...trycloudflare.com/?token=<random-token>` URL on
 the phone. Say one of the wake names first, for example `老公，听得到吗？`.
 
+For daily use on Isa's Mac, the named Cloudflare tunnel routes
+`https://stackchan-voice.migratorybird.xyz` to this receiver. With
+`STACKCHAN_VOICE_PUBLIC_URL=https://stackchan-voice.migratorybird.xyz` and
+`STACKCHAN_VOICE_UPLOAD_TOKEN` set in the local, gitignored `.env`, the stable
+phone recorder URL is:
+
+```text
+https://stackchan-voice.migratorybird.xyz/?token=<upload-token>
+```
+
+Run this health check when something feels stuck:
+
+```bash
+./start-voice-upload.sh status
+```
+
+It verifies the local receiver, the public HTTPS route, migratorybird
+`agent-host`, the Cloudflare launchd service, the resolved frontend session, and
+the configured wake words.
+
 Without `STACKCHAN_FRONTEND_SESSION_ID`, the receiver only records transcripts
 to the voice inbox and never guesses which room should receive them.
 `STACKCHAN_FRONTEND_RETRIES` is useful when the target frontend session is
