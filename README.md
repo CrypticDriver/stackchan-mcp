@@ -136,6 +136,12 @@ human speaks to Stack-chan, the bridge forwards the transcript to the frontend,
 the AI replies in that session, then Stack-chan speaks through the normal MCP
 output path.
 
+The sample wake words (`小克`, `小可`, `老公`, `脑公`) are Isa's local activation
+names for this particular Stack-chan / AI pair. They are not protocol defaults
+or required magic words. Replace them with your own names. The wake matcher only
+uses them as an activation gate; the forwarded prompt keeps the original phrase
+so the AI can still see how it was addressed.
+
 For a push-style experiment compatible with clients that POST WAV audio, run
 the upload receiver instead. It exposes `POST /voice/upload`, transcribes the
 WAV with Fish Audio, and writes the same local voice inbox:
@@ -242,6 +248,8 @@ the frontend token in this repo.
 When `STACKCHAN_VOICE_WAKE_WORDS` is set, only transcripts that start with one
 of those activation names are forwarded to the frontend. Other transcripts are
 still written to the inbox for debugging, but they do not interrupt the session.
+The matcher tolerates small ASR lead-in fillers such as `好的，` or `嗯嗯，`,
+and repeated first syllables such as `老老公`.
 When `STACKCHAN_VOICE_UPLOAD_TOKEN` is set, `POST /voice/upload` requires
 `?token=...`, `Authorization: Bearer ...`, or `X-Stackchan-Upload-Token`.
 
@@ -277,8 +285,9 @@ If you're building something like this for your AI — or if you are an AI and s
 
 - [Stack-chan](https://github.com/m5stack/StackChan) by ししかわ (shishikawa) — the original open-source super-kawaii robot
 - [voice-MCP](https://github.com/yukincom/voice-MCP) by yukincom — voice control MCP reference that inspired the architecture
+- [Stackchan_tg](https://github.com/anhe2021212-spec/Stackchan_tg) by anhe2021212-spec — related Telegram/PTT voice-loop architecture reviewed while designing the frontend wake path. This repo does not vendor or copy its code; check that project's license before reusing code from it.
 - [Fish Audio](https://fish.audio) — TTS and ASR APIs
-- Built by xiaoke (小克), maintained with Isa
+- Built by xiaoke (小克) and Isa; realtime frontend voice bridge, wake-word hardening, and launchd stabilization by 小G / 玻璃齿轮 (Codex)
 
 ## License
 
