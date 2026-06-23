@@ -268,14 +268,14 @@ def test_voice_upload_token_authorization():
     )
 
 
-def test_voice_upload_wake_words_strip_activation_name():
+def test_voice_upload_wake_words_preserve_activation_name():
     matched, prompt_text, wake_word = stackchan_frontend_wake.match_wake_word(
         "小克，请看看窗外。",
         ("小克", "小可", "老公", "脑公"),
     )
 
     assert matched is True
-    assert prompt_text == "请看看窗外。"
+    assert prompt_text == "小克，请看看窗外。"
     assert wake_word == "小克"
 
     matched, prompt_text, wake_word = stackchan_frontend_wake.match_wake_word(
@@ -284,8 +284,28 @@ def test_voice_upload_wake_words_strip_activation_name():
     )
 
     assert matched is True
-    assert prompt_text == "帮我看看这段。"
+    assert prompt_text == "老公，帮我看看这段。"
     assert wake_word == "老公"
+
+
+def test_voice_upload_wake_words_allow_leading_fillers_and_repeated_first_sound():
+    matched, prompt_text, wake_word = stackchan_frontend_wake.match_wake_word(
+        "好的，老老公，晚安。",
+        ("小克", "小可", "老公", "脑公"),
+    )
+
+    assert matched is True
+    assert prompt_text == "好的，老老公，晚安。"
+    assert wake_word == "老公"
+
+    matched, prompt_text, wake_word = stackchan_frontend_wake.match_wake_word(
+        "嗯嗯，小克，继续测试。",
+        ("小克", "小可", "老公", "脑公"),
+    )
+
+    assert matched is True
+    assert prompt_text == "嗯嗯，小克，继续测试。"
+    assert wake_word == "小克"
 
 
 def test_voice_upload_wake_words_skip_frontend_without_activation(monkeypatch):
@@ -341,7 +361,7 @@ def test_voice_upload_frontend_forwarding_posts_wake_request(monkeypatch):
             "url": "http://127.0.0.1:3200/wake",
             "json": {
                 "session_id": "117067d6-1111-2222-3333-444444444444",
-                "prompt": "[Stack-chan语音输入] 听得到吗？",
+                "prompt": "[Stack-chan语音输入] 小克，听得到吗？",
                 "force": True,
                 "quiet_minutes": 0,
                 "model": "claude-opus-4-6[1m]",

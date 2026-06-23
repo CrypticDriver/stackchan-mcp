@@ -6,6 +6,17 @@ from typing import Any
 import requests
 
 DEFAULT_PROMPT_PREFIX = "[Stack-chan语音输入] "
+LEADING_FILLERS = (
+    "好的",
+    "好",
+    "嗯嗯",
+    "嗯",
+    "啊",
+    "呀",
+    "诶",
+    "欸",
+    "那个",
+)
 
 
 def frontend_prompt(text: str, prefix: str = DEFAULT_PROMPT_PREFIX) -> str:
@@ -16,23 +27,43 @@ def parse_wake_words(raw: str) -> tuple[str, ...]:
     return tuple(word.strip() for word in raw.split(",") if word.strip())
 
 
+def strip_leading_fillers(text: str) -> str:
+    remaining = text.strip()
+    changed = True
+    while changed:
+        changed = False
+        remaining = remaining.lstrip(" ，,。.!！?？:：、…")
+        for filler in LEADING_FILLERS:
+            if remaining.startswith(filler):
+                remaining = remaining[len(filler) :]
+                changed = True
+                break
+    return remaining.lstrip(" ，,。.!！?？:：、…")
+
+
+def wake_word_matches_start(text: str, word: str) -> bool:
+    if text.startswith(word):
+        return True
+    duplicated_first = f"{word[0]}{word}" if word else ""
+    return bool(duplicated_first and text.startswith(duplicated_first))
+
+
 def match_wake_word(text: str, wake_words: tuple[str, ...]) -> tuple[bool, str, str]:
     clean_text = text.strip()
     if not wake_words:
         return True, clean_text, ""
+    match_text = strip_leading_fillers(clean_text)
 
     for word in wake_words:
         if not word:
             continue
-        if clean_text.startswith(word):
-            stripped = clean_text[len(word) :].lstrip(" ，,。.!！?？:：、")
-            return True, stripped or clean_text, word
+        if wake_word_matches_start(match_text, word):
+            return True, clean_text, word
         marker = f" {word}"
         if marker in clean_text:
             before, after = clean_text.split(marker, 1)
             if not before.strip():
-                stripped = after.lstrip(" ，,。.!！?？:：、")
-                return True, stripped or clean_text, word
+                return True, clean_text, word
     return False, clean_text, ""
 
 
