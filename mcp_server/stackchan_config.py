@@ -1,8 +1,37 @@
 import logging
 import os
+import shlex
 from dataclasses import dataclass
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def load_dotenv(path: Path | None = None) -> None:
+    """Load project .env so launchd and direct shell starts share one config."""
+    env_path = path or (Path.cwd() / ".env")
+    if not env_path.exists():
+        return
+    try:
+        lines = env_path.read_text(errors="ignore").splitlines()
+    except OSError as exc:
+        logger.warning("Could not read %s: %s", env_path, exc)
+        return
+
+    for line in lines:
+        raw = line.strip()
+        if not raw or raw.startswith("#") or "=" not in raw:
+            continue
+        key, value = raw.split("=", 1)
+        key = key.strip()
+        if not key or not key.replace("_", "").isalnum():
+            continue
+        try:
+            parsed = shlex.split(value, comments=False, posix=True)
+            value = parsed[0] if parsed else ""
+        except ValueError:
+            value = value.strip().strip("'\"")
+        os.environ[key] = value
 
 
 def env_float(name: str, default: float) -> float:
@@ -61,6 +90,8 @@ EDGE_VOICES = {
 
 
 def load_config() -> StackchanConfig:
+    load_dotenv()
+
     audio_mode = os.environ.get("STACKCHAN_AUDIO_MODE", "auto").lower()
     if audio_mode not in VALID_AUDIO_MODES:
         logger.warning("Invalid STACKCHAN_AUDIO_MODE=%s; using auto", audio_mode)

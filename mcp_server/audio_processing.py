@@ -23,6 +23,23 @@ def new_tts_stem() -> str:
     return f"tts_{int(time.time() * 1000)}_{uuid.uuid4().hex}"
 
 
+def raise_for_fish_status(resp: requests.Response) -> None:
+    try:
+        resp.raise_for_status()
+        return
+    except requests.HTTPError as exc:
+        try:
+            detail = resp.text.strip()
+        except Exception:
+            detail = ""
+        if len(detail) > 500:
+            detail = detail[:500] + "…"
+        message = str(exc)
+        if detail:
+            message = f"{message}; Fish response: {detail}"
+        raise requests.HTTPError(message, response=resp) from exc
+
+
 def validate_playback_wav(wav_path: Path) -> None:
     try:
         with wave.open(str(wav_path), "rb") as wav:
@@ -123,7 +140,7 @@ def tts_fish(text: str, lang: str, config: StackchanConfig) -> Path:
             },
             timeout=30,
         )
-        resp.raise_for_status()
+        raise_for_fish_status(resp)
         raw_path.write_bytes(resp.content)
         subprocess.run(
             [
@@ -246,7 +263,7 @@ def iter_fish_pcm_stream(text: str, lang: str, config: StackchanConfig):
         stream=True,
         timeout=30,
     )
-    resp.raise_for_status()
+    raise_for_fish_status(resp)
     for chunk in resp.iter_content(chunk_size=4096):
         if chunk:
             yield chunk
