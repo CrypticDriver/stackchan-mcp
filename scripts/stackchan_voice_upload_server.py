@@ -105,6 +105,10 @@ def send_json_headers(handler: BaseHTTPRequestHandler, status: int, content_leng
     handler.end_headers()
 
 
+def json_content_length(payload: dict[str, Any]) -> int:
+    return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
+
 def write_html(handler: BaseHTTPRequestHandler, status: int, html: str) -> None:
     body = html.encode("utf-8")
     send_html_headers(handler, status, len(body))
@@ -440,6 +444,26 @@ def is_upload_authorized(path: str, headers: Any, token: str) -> bool:
     return query_token == token or auth == f"Bearer {token}" or header_token == token
 
 
+def build_health_payload(options: ServerOptions) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "service": "stackchan_voice_upload_server",
+        "inbox": str(options.inbox_path) if options.inbox_path else None,
+        "frontend": bool(options.wake_url and options.wake_session_id),
+    }
+
+
+def write_rate_limit_error(handler: BaseHTTPRequestHandler) -> None:
+    body = b'{"ok":false,"error":"rate limit exceeded"}'
+    handler.send_response(429)
+    send_cors_headers(handler)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Retry-After", "60")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
 class VoiceUploadServer(ThreadingHTTPServer):
     def __init__(self, server_address, handler_class, *, config: StackchanConfig, options: ServerOptions):
         super().__init__(server_address, handler_class)
@@ -461,16 +485,7 @@ class VoiceUploadHandler(BaseHTTPRequestHandler):
             write_html(self, 200, build_recorder_page(self.server.options))
             return
         if path == "/health":
-            write_json(
-                self,
-                200,
-                {
-                    "ok": True,
-                    "service": "stackchan_voice_upload_server",
-                    "inbox": str(self.server.options.inbox_path) if self.server.options.inbox_path else None,
-                    "frontend": bool(self.server.options.wake_url and self.server.options.wake_session_id),
-                },
-            )
+            write_json(self, 200, build_health_payload(self.server.options))
             return
         write_json(self, 404, {"ok": False, "error": "not found"})
 
@@ -480,19 +495,9 @@ class VoiceUploadHandler(BaseHTTPRequestHandler):
             send_html_headers(self, 200, len(build_recorder_page(self.server.options).encode("utf-8")))
             return
         if path == "/health":
-            payload = {
-                "ok": True,
-                "service": "stackchan_voice_upload_server",
-                "inbox": str(self.server.options.inbox_path) if self.server.options.inbox_path else None,
-                "frontend": bool(self.server.options.wake_url and self.server.options.wake_session_id),
-            }
-            send_json_headers(
-                self,
-                200,
-                len(json.dumps(payload, ensure_ascii=False).encode("utf-8")),
-            )
+            send_json_headers(self, 200, json_content_length(build_health_payload(self.server.options)))
             return
-        send_json_headers(self, 404, len(b'{"ok":false,"error":"not found"}'))
+        send_json_headers(self, 404, json_content_length({"ok": False, "error": "not found"}))
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -507,14 +512,7 @@ class VoiceUploadHandler(BaseHTTPRequestHandler):
             write_json(self, 404, {"ok": False, "error": "not found"})
             return
         if not self.server.rate_limiter.allow(self.client_address[0]):
-            self.send_response(429)
-            send_cors_headers(self)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Retry-After", "60")
-            body = b'{"ok":false,"error":"rate limit exceeded"}'
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            write_rate_limit_error(self)
             return
         if not self.is_upload_authorized():
             write_json(self, 401, {"ok": False, "error": "unauthorized"})

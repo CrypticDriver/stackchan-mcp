@@ -12,6 +12,15 @@ static char s_owner[OWNER_LEN] = "none";
 static uint32_t s_lockCount = 0;
 static uint32_t s_failedAcquireCount = 0;
 
+static const char* ownerLabel(const char* owner) {
+    return owner ? owner : "unknown";
+}
+
+static void setOwner(const char* owner) {
+    strncpy(s_owner, owner, OWNER_LEN - 1);
+    s_owner[OWNER_LEN - 1] = '\0';
+}
+
 void initAudioGate() {
     if (s_audioMutex) {
         return;
@@ -36,15 +45,14 @@ bool audioGateEnter(const char* owner, uint32_t timeoutMs) {
 
     TickType_t ticks = timeoutMs == UINT32_MAX ? portMAX_DELAY : pdMS_TO_TICKS(timeoutMs);
     if (xSemaphoreTakeRecursive(s_audioMutex, ticks) == pdTRUE) {
-        strncpy(s_owner, owner ? owner : "unknown", OWNER_LEN - 1);
-        s_owner[OWNER_LEN - 1] = '\0';
+        setOwner(ownerLabel(owner));
         s_lockCount++;
         return true;
     }
 
     s_failedAcquireCount++;
     Serial.printf("[AUDIO] Gate busy: requested=%s owner=%s failed=%u\n",
-                  owner ? owner : "unknown", s_owner, (unsigned)s_failedAcquireCount);
+                  ownerLabel(owner), s_owner, (unsigned)s_failedAcquireCount);
     return false;
 }
 
@@ -52,10 +60,9 @@ void audioGateLeave(const char* owner) {
     if (!s_audioMutex) {
         return;
     }
-    strncpy(s_owner, "none", OWNER_LEN - 1);
-    s_owner[OWNER_LEN - 1] = '\0';
+    setOwner("none");
     if (xSemaphoreGiveRecursive(s_audioMutex) != pdTRUE) {
-        Serial.printf("[AUDIO] Gate leave failed: owner=%s\n", owner ? owner : "unknown");
+        Serial.printf("[AUDIO] Gate leave failed: owner=%s\n", ownerLabel(owner));
     }
 }
 

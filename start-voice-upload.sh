@@ -93,6 +93,20 @@ python_cmd() {
     fi
 }
 
+start_upload_server() {
+    local -a cmd
+    if [ -x "$PYTHON_BIN" ]; then
+        cmd=("$PYTHON_BIN")
+    else
+        cmd=(uv run python)
+    fi
+    nohup "${cmd[@]}" scripts/stackchan_voice_upload_server.py \
+        --host "$HOST" \
+        --port "$PORT" \
+        --lang "$LANGUAGE" \
+        >> "$LOG_FILE" 2>&1 &
+}
+
 is_running() {
     [ -n "$(running_pid)" ]
 }
@@ -189,19 +203,7 @@ case "${1:-start}" in
             exit 1
         fi
         cd "$SCRIPT_DIR" || exit 1
-        if [ -x "$PYTHON_BIN" ]; then
-            nohup "$PYTHON_BIN" scripts/stackchan_voice_upload_server.py \
-                --host "$HOST" \
-                --port "$PORT" \
-                --lang "$LANGUAGE" \
-                >> "$LOG_FILE" 2>&1 &
-        else
-            nohup uv run python scripts/stackchan_voice_upload_server.py \
-                --host "$HOST" \
-                --port "$PORT" \
-                --lang "$LANGUAGE" \
-                >> "$LOG_FILE" 2>&1 &
-        fi
+        start_upload_server
         echo $! > "$PID_FILE"
         echo "Started Stack-chan voice upload receiver: PID $(cat "$PID_FILE")"
         echo "Runtime: $(python_cmd)"

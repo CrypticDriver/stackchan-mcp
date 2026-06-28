@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+
 def default_registry_path() -> Path:
     return Path(os.environ.get("STACKCHAN_FRONTEND_REGISTRY", "web-sessions.json"))
 

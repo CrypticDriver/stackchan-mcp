@@ -108,6 +108,17 @@ static void retireCurrentPlaybackBuffer() {
     s_currentAudioSize = 0;
 }
 
+static void prepareSpeakerPlayback() {
+    if (M5.Mic.isRunning()) {
+        M5.Mic.end();
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    if (!M5.Speaker.isRunning()) {
+        M5.Speaker.begin();
+    }
+    M5.Speaker.setVolume(SPEAKER_VOLUME);
+}
+
 // ════════════════════════════════════════
 //  ダウンロードタスク（loop()とは別タスクで動く）
 //  loop()をブロックしないための分離
@@ -213,16 +224,8 @@ static bool startDownloadedWavPlayback(uint8_t* wavData, size_t wavSize) {
     }
 
     // マイク停止 → スピーカー起動
-    if (M5.Mic.isRunning()) {
-        M5.Mic.end();
-        vTaskDelay(pdMS_TO_TICKS(200));  // 固定200ms待機に戻す
-    }
-    if (!M5.Speaker.isRunning()) {
-        M5.Speaker.begin();
-    }
-
+    prepareSpeakerPlayback();
     Serial.println("[PLAY] Mic stopped");
-    M5.Speaker.setVolume(SPEAKER_VOLUME);
     bool ok = M5.Speaker.playWav(s_currentAudioData, s_currentAudioSize);
     if (!ok) {
         Serial.println("[PLAY] Speaker rejected playWav");
@@ -311,15 +314,7 @@ PcmPlaybackResult startPcmPlayback(uint8_t* pcmData, size_t pcmSize, const Strin
         return PCM_PLAYBACK_SPEAKER_FAILED;
     }
 
-    if (M5.Mic.isRunning()) {
-        M5.Mic.end();
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
-    if (!M5.Speaker.isRunning()) {
-        M5.Speaker.begin();
-    }
-
-    M5.Speaker.setVolume(SPEAKER_VOLUME);
+    prepareSpeakerPlayback();
     bool ok = M5.Speaker.playRaw((const int16_t*)s_currentAudioData,
                                  s_currentAudioSize / sizeof(int16_t),
                                  PCM_SAMPLE_RATE,
