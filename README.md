@@ -1,5 +1,7 @@
 # stackchan-mcp
 
+[![CI](https://github.com/migratorywhale/stackchan-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/migratorywhale/stackchan-mcp/actions/workflows/ci.yml)
+
 Give your AI a body. This is a bridge between Claude (or any MCP-compatible AI) and [Stack-chan](https://github.com/m5stack/StackChan), the open-source robot built on M5Stack CoreS3.
 
 **What it does:** speak, listen, see, move, and show expressions — all through MCP tool calls. Any Claude window (Code CLI, Chat, Cowork) becomes a voice and a face on your desk.
@@ -292,6 +294,26 @@ Stack-chan has 7 expressions stored as 320x240 PNGs on the device's LittleFS. Th
 - **Fish Audio:** set `FISH_AUDIO_MODEL_ZH` / `FISH_AUDIO_MODEL_EN` to your
   chosen voice model ids.
 - **Fallback:** edge-tts (free Microsoft TTS, no API key needed)
+
+## Development
+
+Contributor setup, local quality gates, the optional git hook, and CI behavior
+are documented in `CONTRIBUTING.md`.
+
+The usual no-device checks are:
+
+```bash
+make lint
+make test
+```
+
+`make lint` runs Python `ruff` plus high-severity PlatformIO `cppcheck`.
+`make test` runs Python `pytest`, native firmware Unity tests, and a CoreS3
+firmware build. CI mirrors these safe checks without uploading firmware,
+calling live devices, or reading local secret files.
+
+For logs, non-destructive health probes, metric fields, and alert candidates,
+see `docs/observability.md`.
 
 ## Why this exists
 

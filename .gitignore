@@ -28,6 +28,7 @@ build/
 .env.*
 !.env.example
 firmware/src/config.h
+deploy/macos/*.plist
 
 # PlatformIO
 .pio/
@@ -44,5 +45,6 @@ CLAUDE.md
 
 # Generated local artifacts
 *.log
+*.pid
 *.tmp
 *.bak
