@@ -1,4 +1,4 @@
-.PHONY: lint lint-python typecheck-python lint-firmware test test-python test-mcp mcp-test test-firmware-cpp build-firmware
+.PHONY: lint lint-python typecheck-python lint-firmware test test-python test-mcp mcp-test test-firmware-cpp build-firmware audit-security ci-local
 
 lint: lint-python typecheck-python lint-firmware
 
@@ -26,3 +26,8 @@ test-firmware-cpp:
 
 build-firmware:
 	cd firmware && pio run -e m5stack-cores3
+
+audit-security:
+	uv run python scripts/ci_security_audit.py
+
+ci-local: lint test audit-security
