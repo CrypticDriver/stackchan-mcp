@@ -74,6 +74,32 @@ tests/test_mcp_server.py`. To run the full Makefile gate before a commit:
 STACKCHAN_HOOK_FULL=1 git commit
 ```
 
+The same hook path also enables a `commit-msg` hook that rejects commit subjects
+which do not follow Conventional Commits.
+
+## Commit Messages
+
+Use Conventional Commits for every commit:
+
+```text
+<type>(<scope>): <description>
+```
+
+Use `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci`, `chore`,
+`perf`, or `style` as the type. Add a scope when it clarifies the affected
+area, such as `firmware`, `mcp`, `docs`, `tests`, `ci`, or `deps`.
+
+Examples:
+
+```text
+fix(firmware): handle queued wav playback safely
+ci(python): add pyright gate
+docs: document live-device audio checks
+```
+
+For breaking changes, add `!` after the type or scope and include a
+`BREAKING CHANGE:` footer.
+
 ## Hardware And Safety Notes
 
 - The firmware HTTP API is designed for a trusted LAN. Do not expose the CoreS3

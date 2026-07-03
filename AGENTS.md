@@ -22,6 +22,7 @@ Stack-chan voice avatar running on M5Stack CoreS3.
 - Do not overwrite local secrets or Wi-Fi settings in `firmware/src/config.h`.
   Use `firmware/config.h.example` for documented defaults.
 - Avoid destructive git operations unless explicitly requested.
+- Use Conventional Commits for all commit messages.
 
 ## Firmware Notes
 
@@ -70,14 +71,16 @@ make lint
 make test
 ```
 
-- `make lint` runs Python `ruff` plus firmware `pio check`.
-- `make test` runs Python `pytest` plus a firmware `pio run` build.
+- `make lint` runs Python `ruff`, Python `pyright`, and firmware `pio check`.
+- `make test` runs Python `pytest` with coverage, firmware native tests, and a
+  firmware `pio run` build.
 - `make test-mcp` runs only the MCP server unit tests.
 
 Run the smallest useful check while iterating, then run the broader gate before
 handing off changes:
 
-- Python or MCP server changes: `uv run ruff check .` and `uv run pytest`.
+- Python or MCP server changes: `uv run ruff check .`, `uv run pyright`, and
+  `uv run pytest`.
 - MCP server behavior changes: also run `make test-mcp`.
 - Firmware changes: run `cd firmware && pio run`.
 - Firmware safety/lint checks: run
@@ -134,6 +137,20 @@ recording.
 - For face assets, keep filenames and SPIFFS paths aligned between
   `firmware/data/` and `firmware/src/face_service.cpp`.
 
+## Commit Style
+
+- Use Conventional Commits: `<type>(<scope>): <description>`.
+- Prefer these types: `feat`, `fix`, `docs`, `test`, `refactor`, `build`,
+  `ci`, `chore`, `perf`, and `style`.
+- Use scopes that match the affected area when useful, such as `firmware`,
+  `mcp`, `docs`, `tests`, `ci`, or `deps`.
+- Keep the description imperative, lowercase, and concise.
+- Use `!` and a `BREAKING CHANGE:` footer for breaking changes.
+- Examples:
+  - `fix(firmware): handle queued wav playback safely`
+  - `ci(python): add pyright gate`
+  - `docs: document live-device audio checks`
+
 ## Troubleshooting Documentation
 
 - Record non-trivial debugging sessions under `docs/`.
@@ -145,4 +162,3 @@ recording.
   links.
 - If the issue changes established project behavior, update
   `docs/development-guide.md` as well so the general guide stays current.
-

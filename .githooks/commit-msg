@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+set -eu
+
+message_file="$1"
+subject="$(sed -n '1p' "$message_file")"
+
+pattern='^(feat|fix|docs|test|refactor|build|ci|chore|perf|style)(\([a-z0-9._-]+\))?!?: .+'
+
+if ! printf '%s\n' "$subject" | grep -Eq "$pattern"; then
+    cat >&2 <<'EOF'
+Invalid commit message.
+
+Use Conventional Commits:
+  <type>(<scope>): <description>
+
+Examples:
+  fix(firmware): handle queued wav playback safely
+  ci(python): add pyright gate
+  docs: document live-device audio checks
+
+Allowed types:
+  feat, fix, docs, test, refactor, build, ci, chore, perf, style
+EOF
+    exit 1
+fi
