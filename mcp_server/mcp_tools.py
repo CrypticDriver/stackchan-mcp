@@ -265,7 +265,7 @@ def register_tools(mcp, client: StackchanClient, config: StackchanConfig, image_
         except Exception as exc:
             return f"❌ Error: {exc}"
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def stackchan_see() -> list[object] | str:
         try:
             jpeg_data, size = client.snapshot()

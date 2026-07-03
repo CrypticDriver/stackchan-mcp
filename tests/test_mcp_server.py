@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import json
 import os
@@ -6,6 +7,7 @@ import sys
 import types
 import wave
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -41,7 +43,7 @@ class FakeFastMCP:
         self.kwargs = kwargs
         self.tools = {}
 
-    def tool(self):
+    def tool(self, **kwargs):
         def decorator(func):
             self.tools[func.__name__] = func
             return func
@@ -89,6 +91,20 @@ def write_wav(
         wav.writeframes(frames)
 
 
+def mcp_json_payload(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, list | tuple):
+        return [mcp_json_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {key: mcp_json_payload(item) for key, item in value.items()}
+    return value
+
+
+def assert_mcp_json_serializable(value: Any) -> None:
+    json.dumps(mcp_json_payload(value))
+
+
 def test_server_entrypoint_registers_expected_tools(monkeypatch):
     fake_mcp_package = types.ModuleType("mcp")
     fake_mcp_server = types.ModuleType("mcp.server")
@@ -122,6 +138,28 @@ def test_server_entrypoint_registers_expected_tools(monkeypatch):
         "stackchan_voice_inbox",
         "stackchan_voice_inbox_clear",
     }
+
+
+def test_stackchan_see_returns_fastmcp_serializable_image_content(monkeypatch, tmp_path):
+    from mcp.server.fastmcp import FastMCP, Image
+
+    class FakeClient:
+        def snapshot(self):
+            return b"\xff\xd8fake-jpeg\xff\xd9", 15
+
+    monkeypatch.setattr("mcp_server.mcp_tools.AUDIO_DIR", tmp_path)
+    mcp = FastMCP("stackchan-test")
+    register_tools(mcp, FakeClient(), make_config(), Image)
+
+    tool = mcp._tool_manager.get_tool("stackchan_see")
+    assert tool is not None
+    content = asyncio.run(tool.run({}, convert_result=True))
+
+    assert content[0].type == "image"
+    assert content[0].mimeType == "image/jpeg"
+    assert content[1].type == "text"
+    assert "Photo captured" in content[1].text
+    assert_mcp_json_serializable(content)
 
 
 def test_audio_url_uses_configured_host_and_port():
