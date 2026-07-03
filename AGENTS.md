@@ -151,6 +151,25 @@ recording.
   - `ci(python): add pyright gate`
   - `docs: document live-device audio checks`
 
+## Dependency Policy
+
+- Keep direct dependencies pinned exactly. Do not introduce `latest`, wildcard,
+  branch, caret, or lower-bound-only specs for Python, PlatformIO, or CI
+  dependencies.
+- Keep `uv.lock` committed and use `uv sync --locked` in CI.
+- Pin GitHub Actions to commit SHAs with a nearby tag comment.
+- Routine dependency updates should come through Dependabot where supported and
+  must respect the configured cooldown: 7 days for Python patch updates, 14 days
+  for Python minor updates, 30 days for Python major updates, and 14 days for
+  GitHub Actions.
+- PlatformIO dependency updates are manual. Wait at least 14 days for libraries
+  and 30 days for platforms/toolchains unless a security advisory or hardware
+  blocker justifies an exception.
+- For PlatformIO changes, inspect `cd firmware && pio pkg list` because nested
+  dependencies may move even when direct dependencies are pinned.
+- Document any cooldown exception in the commit or PR with the advisory or
+  operational reason and the verification performed.
+
 ## Troubleshooting Documentation
 
 - Record non-trivial debugging sessions under `docs/`.

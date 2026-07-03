@@ -37,7 +37,7 @@ formatter, make that a style-only PR.
 
 ```sh
 uv sync --dev
-python -m pip install --upgrade platformio
+python -m pip install platformio==6.1.18
 ```
 
 Firmware configuration is intentionally local:
@@ -99,6 +99,33 @@ docs: document live-device audio checks
 
 For breaking changes, add `!` after the type or scope and include a
 `BREAKING CHANGE:` footer.
+
+## Dependency Policy
+
+This is a public OSS repository, so dependency changes should be conservative
+and reviewable.
+
+- Pin direct Python dependencies exactly in `pyproject.toml`; `uv.lock` remains
+  the source of truth for the full resolved graph.
+- Pin direct PlatformIO platforms and libraries exactly in
+  `firmware/platformio.ini`. Do not use unbounded, caret, wildcard, branch, or
+  `latest` dependency specs.
+- PlatformIO can still resolve nested library dependencies from direct
+  dependencies. Check `cd firmware && pio pkg list` in every PlatformIO
+  dependency PR and call out any nested dependency that moved.
+- Pin GitHub Actions to commit SHAs. Keep a comment with the human-readable tag
+  next to the SHA.
+- Use Dependabot PRs for routine Python and GitHub Actions updates. The
+  configured cooldown is 7 days for patch, 14 days for minor, and 30 days for
+  major Python updates; GitHub Actions wait 14 days.
+- PlatformIO updates are manual because Dependabot does not manage this
+  manifest here. Wait at least 14 days after release for libraries and 30 days
+  for platforms/toolchains unless fixing a confirmed vulnerability or hardware
+  blocker.
+- Security updates may bypass the cooldown only when the PR or commit explains
+  the advisory, affected versions, and verification performed.
+- Every dependency update must run the narrow relevant checks and the broader
+  handoff gate before merge.
 
 ## Hardware And Safety Notes
 

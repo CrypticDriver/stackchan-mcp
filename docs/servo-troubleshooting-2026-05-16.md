@@ -86,7 +86,7 @@ official board initialization path.
 The firmware now depends on:
 
 ```ini
-m5stack/StackChan-BSP@^1.1.0
+m5stack/StackChan-BSP@1.1.0
 ```
 
 `platformio.ini` also needed:
