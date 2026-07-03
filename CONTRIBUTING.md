@@ -100,6 +100,15 @@ docs: document live-device audio checks
 For breaking changes, add `!` after the type or scope and include a
 `BREAKING CHANGE:` footer.
 
+## Branching
+
+Use short-lived topic branches and merge through protected `master`. The
+recommended branch prefixes are `feat/`, `fix/`, `ci/`, `docs/`, `chore/`,
+`deps/`, and temporary `experiment/` branches for hardware or protocol
+exploration.
+
+See `docs/branching-strategy.md` for the full policy.
+
 ## Dependency Policy
 
 This is a public OSS repository, so dependency changes should be conservative
