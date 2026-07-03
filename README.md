@@ -70,7 +70,8 @@ export FISH_AUDIO_KEY="your_key_here"    # Fish Audio API key
 
 For Streamable HTTP mode, `./start-http.sh` also reads project-root `.env`
 overrides such as `STACKCHAN_PORT`, `MCP_PYTHON`, `STACKCHAN_PUBLIC_MCP_URL`,
-and `STACKCHAN_LOG_DIR`.
+`STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL`, and `STACKCHAN_LOG_DIR`. Public MCP
+tunnel startup is disabled unless `STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL=1`.
 
 For local secrets and host-specific values, copy `.env.example` to `.env` and
 edit the copy. `.env` is gitignored; do not commit API keys, upload tokens,

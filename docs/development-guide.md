@@ -432,11 +432,13 @@ Or use:
 ./start-http.sh stop
 ```
 
-`start-http.sh` starts the MCP server on port `8002`, starts `cloudflared tunnel
-run` if needed, and checks the public MCP endpoint. It reads optional overrides
-from project-root `.env`: `STACKCHAN_PORT`, `MCP_PYTHON`, `MCP_MODULE`,
-`STACKCHAN_PUBLIC_MCP_URL`, and `STACKCHAN_LOG_DIR`. If `MCP_PYTHON` is unset it
-uses `uv run python`, which avoids hard-coding a personal virtualenv path.
+`start-http.sh` starts the MCP server on port `8002`. It starts
+`cloudflared tunnel run` only when `STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL=1`,
+then checks the public MCP endpoint. It reads optional overrides from
+project-root `.env`: `STACKCHAN_PORT`, `MCP_PYTHON`, `MCP_MODULE`,
+`STACKCHAN_PUBLIC_MCP_URL`, `STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL`, and
+`STACKCHAN_LOG_DIR`. If `MCP_PYTHON` is unset it uses `uv run python`, which
+avoids hard-coding a personal virtualenv path.
 
 Run the MCP-only regression tests without a device:
 

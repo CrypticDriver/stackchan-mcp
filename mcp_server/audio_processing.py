@@ -1,4 +1,5 @@
 import os
+import shutil
 import struct
 import subprocess
 import time
@@ -78,13 +79,21 @@ def publish_validated_wav(temp_wav_path: Path, final_stem: str) -> Path:
     return final_path
 
 
+def require_executable(name: str) -> str:
+    executable = shutil.which(name)
+    if not executable:
+        raise RuntimeError(f"Required executable not found on PATH: {name}")
+    return executable
+
+
 def tts_edge(text: str, lang: str, config: StackchanConfig) -> Path:
     voice = EDGE_VOICES.get(lang, EDGE_VOICES["zh"])
     stem = new_tts_stem()
     mp3_path = TEMP_AUDIO_DIR / f"{stem}.mp3"
     temp_wav_path = TEMP_AUDIO_DIR / f"{stem}.wav"
+    ffmpeg_bin = require_executable("ffmpeg")
     try:
-        subprocess.run(
+        subprocess.run(  # noqa: S603 - shell=False and executable/args are controlled.
             [
                 config.edge_tts_bin,
                 "--voice",
@@ -97,9 +106,9 @@ def tts_edge(text: str, lang: str, config: StackchanConfig) -> Path:
             check=True,
             capture_output=True,
         )
-        subprocess.run(
+        subprocess.run(  # noqa: S603 - shell=False and executable/args are controlled.
             [
-                "ffmpeg",
+                ffmpeg_bin,
                 "-y",
                 "-i",
                 str(mp3_path),
@@ -125,6 +134,7 @@ def tts_fish(text: str, lang: str, config: StackchanConfig) -> Path:
     stem = new_tts_stem()
     raw_path = TEMP_AUDIO_DIR / f"{stem}_raw.wav"
     temp_wav_path = TEMP_AUDIO_DIR / f"{stem}.wav"
+    ffmpeg_bin = require_executable("ffmpeg")
     try:
         resp = requests.post(
             "https://api.fish.audio/v1/tts",
@@ -142,9 +152,9 @@ def tts_fish(text: str, lang: str, config: StackchanConfig) -> Path:
         )
         raise_for_fish_status(resp)
         raw_path.write_bytes(resp.content)
-        subprocess.run(
+        subprocess.run(  # noqa: S603 - shell=False and executable/args are controlled.
             [
-                "ffmpeg",
+                ffmpeg_bin,
                 "-y",
                 "-i",
                 str(raw_path),

@@ -9,8 +9,8 @@ Stack-chan voice avatar running on M5Stack CoreS3.
 - `mcp-server/` contains a Python MCP server that lets clients control
   Stack-chan over HTTP.
 - `faces/` and `firmware/data/` contain the PNG face assets used by the device.
-- `start-http.sh` starts the MCP HTTP server and the public tunnel used by
-  remote clients.
+- `start-http.sh` starts the MCP HTTP server. Public tunnel startup is opt-in
+  with `STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL=1`.
 
 ## Important Rules
 
@@ -109,6 +109,7 @@ For local HTTP MCP mode:
 
 ```sh
 ./start-http.sh
+STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL=1 ./start-http.sh
 ./start-http.sh stop
 ```
 

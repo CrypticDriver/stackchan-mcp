@@ -5,10 +5,12 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-AUDIO_DIR = Path("/tmp/stackchan_audio")
+AUDIO_DIR = Path("/tmp/stackchan_audio")  # noqa: S108 - local audio cache, mode restricted below.
 AUDIO_DIR.mkdir(exist_ok=True)
+AUDIO_DIR.chmod(0o700)
 TEMP_AUDIO_DIR = AUDIO_DIR / ".tmp"
 TEMP_AUDIO_DIR.mkdir(exist_ok=True)
+TEMP_AUDIO_DIR.chmod(0o700)
 
 _http_server = None
 _http_thread = None
@@ -34,7 +36,7 @@ def start_audio_server(port: int) -> None:
         # ThreadingHTTPServer: one hung client connection must not starve the
         # rest — the single-threaded HTTPServer deadlocked playback whenever a
         # download was interrupted (root cause of the "one bullet" silence bug).
-        _http_server = ThreadingHTTPServer(("0.0.0.0", port), QuietHandler)
+        _http_server = ThreadingHTTPServer(("0.0.0.0", port), QuietHandler)  # noqa: S104 - device must fetch host audio over LAN.
         _http_thread = threading.Thread(target=_http_server.serve_forever, daemon=True)
         _http_thread.start()
     except OSError as exc:

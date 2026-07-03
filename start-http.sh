@@ -1,9 +1,11 @@
 #!/bin/bash
-# Start Stack-chan MCP server in HTTP mode + cloudflared tunnel
-# Set STACKCHAN_PUBLIC_MCP_URL in .env when exposing it through a tunnel.
+# Start Stack-chan MCP server in HTTP mode.
+# Public cloudflared tunnel startup is opt-in; set
+# STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL=1 only when you intend to expose MCP.
 #
-# Usage: ./start-http.sh        (start both)
-#        ./start-http.sh stop   (stop both)
+# Usage: ./start-http.sh        (start local MCP HTTP server)
+#        STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL=1 ./start-http.sh
+#        ./start-http.sh stop   (stop local server and cloudflared tunnel)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -18,6 +20,7 @@ STACKCHAN_PORT="${STACKCHAN_PORT:-8002}"
 MCP_PYTHON="${MCP_PYTHON:-}"
 MCP_MODULE="${MCP_MODULE:-mcp_server.server}"
 STACKCHAN_PUBLIC_MCP_URL="${STACKCHAN_PUBLIC_MCP_URL:-}"
+STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL="${STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL:-0}"
 STACKCHAN_LOG_DIR="${STACKCHAN_LOG_DIR:-/tmp}"
 MCP_LOG="$STACKCHAN_LOG_DIR/stackchan_mcp_http.log"
 CLOUDFLARED_LOG="$STACKCHAN_LOG_DIR/cloudflared.log"
@@ -49,13 +52,17 @@ echo "   PID=$!"
 
 sleep 2
 
-# Start cloudflared (if not already running)
-if pgrep -f "cloudflared tunnel run" >/dev/null 2>&1; then
-    echo "☁️  cloudflared already running"
+if [ "$STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL" = "1" ]; then
+    # Start cloudflared (if not already running)
+    if pgrep -f "cloudflared tunnel run" >/dev/null 2>&1; then
+        echo "☁️  cloudflared already running"
+    else
+        echo "☁️  Starting cloudflared tunnel..."
+        nohup cloudflared tunnel run > "$CLOUDFLARED_LOG" 2>&1 &
+        echo "   PID=$!"
+    fi
 else
-    echo "☁️  Starting cloudflared tunnel..."
-    nohup cloudflared tunnel run > "$CLOUDFLARED_LOG" 2>&1 &
-    echo "   PID=$!"
+    echo "☁️  Public MCP tunnel disabled; set STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL=1 to start cloudflared."
 fi
 
 sleep 3
@@ -82,4 +89,6 @@ else
 fi
 echo "Logs:"
 echo "  MCP: $MCP_LOG"
-echo "  cloudflared: $CLOUDFLARED_LOG"
+if [ "$STACKCHAN_ENABLE_PUBLIC_MCP_TUNNEL" = "1" ]; then
+    echo "  cloudflared: $CLOUDFLARED_LOG"
+fi
