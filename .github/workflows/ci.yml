@@ -4,6 +4,11 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -12,6 +17,7 @@ jobs:
   python:
     name: Python host tools
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -41,6 +47,7 @@ jobs:
   firmware:
     name: Firmware build and checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -72,3 +79,14 @@ jobs:
 
       - name: Run high-severity firmware static checks
         run: cd firmware && pio check -e m5stack-cores3 --severity=high --fail-on-defect=high
+
+      - name: Upload firmware artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: m5stack-cores3-firmware
+          path: |
+            firmware/.pio/build/m5stack-cores3/firmware.bin
+            firmware/.pio/build/m5stack-cores3/firmware.elf
+          if-no-files-found: error
+          retention-days: 7
