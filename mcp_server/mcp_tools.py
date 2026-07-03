@@ -209,6 +209,8 @@ def register_tools(mcp, client: StackchanClient, config: StackchanConfig, image_
                 f"pcm_queue={status.get('queued_pcm_segments', '?')}/"
                 f"{status.get('queued_pcm_bytes', '?')}B "
                 f"audio_queue={status.get('audio_queue_depth', '?')} "
+                f"download_queue={status.get('download_queue_depth', '?')} "
+                f"download_in_flight={status.get('download_in_flight', '?')} "
                 f"mic={status.get('mic_state', '?')} "
                 f"gesture={status.get('gesture', '?')} "
                 f"heap={status.get('free_heap', '?')} "

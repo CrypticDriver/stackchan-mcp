@@ -12,6 +12,10 @@ This is the shared contract between the CoreS3 firmware and the MCP server.
   - Body: raw PCM bytes.
   - Format: `24 kHz`, mono, signed 16-bit little-endian PCM.
   - Content type: `audio/x-raw;format=s16le;rate=24000;channels=1`.
+  - PCM metadata can also be sent with headers:
+    `X-Stackchan-Pcm-Session`, `X-Stackchan-Pcm-Seq`, and
+    `X-Stackchan-Pcm-Final`. Headers are preferred for raw uploads; query
+    parameters remain supported for compatibility.
   - Firmware accepts one active PCM session at a time. Segments must arrive in
     increasing `seq` order.
   - Firmware request body limit: `128 KiB`.
@@ -53,5 +57,7 @@ This is the shared contract between the CoreS3 firmware and the MCP server.
 
 - `GET /servo/status`
 - `GET /playback/status`
+  - Includes playback state, PCM queue depth, audio queue depth, download
+    queue depth, and whether a WAV download is currently in flight.
 - `GET /snapshot`
   - Returns a JPEG image.

@@ -148,6 +148,8 @@ def test_voice_bridge_env_loader_does_not_override_existing_values(monkeypatch, 
             ]
         )
     )
+    monkeypatch.delenv("STACKCHAN_IP", raising=False)
+    monkeypatch.delenv("MAC_IP", raising=False)
     monkeypatch.setenv("FISH_AUDIO_KEY", "existing-key")
 
     load_env_file(env_path)
@@ -626,8 +628,35 @@ def test_post_pcm_stream_posts_binary_payload_with_content_length(monkeypatch, t
     assert result["segments"] == 1
     assert request_kwargs["kwargs"]["data"] == struct.pack("<hh", 750, -750)
     assert isinstance(request_kwargs["kwargs"]["data"], bytes)
-    assert request_kwargs["kwargs"]["headers"]["Content-Type"].startswith("audio/x-raw")
+    headers = request_kwargs["kwargs"]["headers"]
+    assert headers["Content-Type"].startswith("audio/x-raw")
+    assert headers["X-Stackchan-Pcm-Session"] == result["session"]
+    assert headers["X-Stackchan-Pcm-Seq"] == "0"
+    assert headers["X-Stackchan-Pcm-Final"] == "1"
     assert "final=1" in request_kwargs["args"][0]
+
+
+def test_wait_for_playback_start_detects_started_ms_change(monkeypatch):
+    statuses = iter(
+        [
+            {"playing": False, "started_ms": 10},
+            {"playing": False, "started_ms": 20},
+        ]
+    )
+
+    class FakeResponse:
+        def json(self):
+            return next(statuses)
+
+    monkeypatch.setattr("mcp_server.stackchan_client.requests.get", lambda *_args, **_kwargs: FakeResponse())
+    monkeypatch.setattr("mcp_server.stackchan_client.time.sleep", lambda _seconds: None)
+
+    result = StackchanClient(make_config()).wait_for_playback_start(
+        baseline_started_ms=10,
+        timeout=1,
+    )
+
+    assert result == {"started": True, "status": {"playing": False, "started_ms": 20}}
 
 
 def test_post_pcm_stream_rejects_oversized_payload_before_http_post(monkeypatch, tmp_path):

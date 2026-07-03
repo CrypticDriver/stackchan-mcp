@@ -1,3 +1,4 @@
+import time
 from contextlib import suppress
 
 import requests
@@ -27,6 +28,35 @@ class StackchanClient:
 
     def play(self, wav_url: str) -> dict:
         return requests.post(f"{self.base_url}/play", json={"voice_url": wav_url}, timeout=5).json()
+
+    def wait_for_playback_start(
+        self,
+        *,
+        baseline_started_ms: int | None = None,
+        timeout: float = 5.0,
+        interval: float = 0.2,
+    ) -> dict:
+        deadline = time.monotonic() + timeout
+        last_status: dict = {}
+        last_error: str | None = None
+        while time.monotonic() < deadline:
+            try:
+                last_status = self.playback_status()
+                last_error = None
+            except requests.RequestException as exc:
+                last_error = str(exc)
+                time.sleep(interval)
+                continue
+            if last_status.get("playing"):
+                return {"started": True, "status": last_status}
+            started_ms = last_status.get("started_ms")
+            if baseline_started_ms is not None and started_ms != baseline_started_ms:
+                return {"started": True, "status": last_status}
+            time.sleep(interval)
+        result = {"started": False, "status": last_status}
+        if last_error:
+            result["error"] = last_error
+        return result
 
     def get_audio(self) -> bytes | None:
         resp = requests.get(f"{self.base_url}/audio", timeout=10)
@@ -95,7 +125,12 @@ def post_pcm_stream(client: StackchanClient, pcm_chunks, audio_dir, audio_proces
             resp = requests.post(
                 url,
                 data=segment,
-                headers={"Content-Type": PCM_CONTENT_TYPE},
+                headers={
+                    "Content-Type": PCM_CONTENT_TYPE,
+                    "X-Stackchan-Pcm-Session": session_id,
+                    "X-Stackchan-Pcm-Seq": str(segment_index),
+                    "X-Stackchan-Pcm-Final": "1" if final else "0",
+                },
                 timeout=30,
             )
             resp.raise_for_status()

@@ -15,10 +15,14 @@ struct AudioTask {
     String voice_id;
     String voice_url;
     PlayPriority priority;
+    uint32_t sequence = 0;
     
     // priority_queue用の比較演算子
     bool operator<(const AudioTask& other) const {
-        return priority < other.priority;
+        if (priority != other.priority) {
+            return priority < other.priority;
+        }
+        return sequence > other.sequence;
     }
 };
 

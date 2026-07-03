@@ -17,6 +17,10 @@ static WebServer server(80);
 static String   s_pcm_diag_session = "";
 static long     s_pcm_diag_next_seq = 0;
 
+static const char* PCM_HEADER_SESSION = "X-Stackchan-Pcm-Session";
+static const char* PCM_HEADER_SEQ = "X-Stackchan-Pcm-Seq";
+static const char* PCM_HEADER_FINAL = "X-Stackchan-Pcm-Final";
+
 // ────────────────────────────────────────────
 // POST /play
 // body: {"voice_url": "http://..."}
@@ -44,10 +48,22 @@ static void handlePlay() {
     task.voice_id  = String("mcp_") + String(millis());
     task.voice_url = String(voice_url);
     task.priority  = PRIORITY_NORMAL;
-    enqueueAudioTask(task);
+    if (!enqueueAudioTask(task)) {
+        Serial.printf("[HTTP] POST /play -> queue failed: %s\n", voice_url);
+        server.send(503, "application/json", "{\"success\":false,\"error\":\"play queue full\"}");
+        return;
+    }
 
     Serial.printf("[HTTP] POST /play -> queued: %s\n", voice_url);
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+static String headerOrArg(const char* headerName, const char* argName) {
+    String value = server.header(headerName);
+    if (value.length() > 0) {
+        return value;
+    }
+    return server.arg(argName);
 }
 
 // ────────────────────────────────────────────
@@ -71,10 +87,11 @@ static void handlePlayPcm() {
 
     PcmUploadBuffer upload = takePcmUploadBody();
     const size_t pcmSize = upload.size;
-    String sessionId = server.arg("session");
-    String seqArg = server.arg("seq");
+    String sessionId = headerOrArg(PCM_HEADER_SESSION, "session");
+    String seqArg = headerOrArg(PCM_HEADER_SEQ, "seq");
     long seq = seqArg.length() ? seqArg.toInt() : -1;
-    bool finalSegment = server.arg("final") == "1" || server.arg("final") == "true";
+    String finalArg = headerOrArg(PCM_HEADER_FINAL, "final");
+    bool finalSegment = finalArg == "1" || finalArg == "true";
     uint8_t* pcmData = upload.data;
 
     long expectedSeq = s_pcm_diag_next_seq;
@@ -84,8 +101,9 @@ static void handlePlayPcm() {
     }
     bool seqValid = true;
     if (seq < 0 || seq != expectedSeq) {
-        Serial.printf("[HTTP] PCM seq invalid: session=%s got=%ld expected=%ld\n",
-                      sessionId.c_str(), seq, expectedSeq);
+        Serial.printf("[HTTP] PCM seq invalid: session=%s got=%ld expected=%ld final=%s bytes=%u\n",
+                      sessionId.c_str(), seq, expectedSeq,
+                      finalSegment ? "true" : "false", (unsigned)pcmSize);
         seqValid = false;
     }
 
@@ -340,6 +358,8 @@ static void handlePlaybackStatus() {
     doc["queued_pcm_bytes"] = playback.queuedPcmBytes;
     doc["queued_pcm_segments"] = playback.queuedPcmSegments;
     doc["audio_queue_depth"] = playback.audioQueueDepth;
+    doc["download_queue_depth"] = playback.downloadQueueDepth;
+    doc["download_in_flight"] = playback.downloadInFlight;
     doc["started_ms"] = playback.startedMs;
     doc["deadline_ms"] = playback.deadlineMs;
     doc["mic_state"] = getMicStateName();
@@ -418,6 +438,12 @@ static void handleSnapshot() {
 // ────────────────────────────────────────────
 
 void initHttpServer() {
+    static const char* headerKeys[] = {
+        PCM_HEADER_SESSION,
+        PCM_HEADER_SEQ,
+        PCM_HEADER_FINAL,
+    };
+    server.collectHeaders(headerKeys, sizeof(headerKeys) / sizeof(headerKeys[0]));
     server.on("/play",         HTTP_POST, handlePlay);
     server.on("/play/pcm",     HTTP_POST, handlePlayPcm, handlePlayPcmRaw);
     server.on("/mode",         HTTP_POST, handleMode);

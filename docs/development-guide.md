@@ -223,7 +223,10 @@ For lower latency speech, firmware also accepts `POST /play/pcm` with raw PCM:
 - Content type: `audio/x-raw;format=s16le;rate=24000;channels=1`.
 - MCP sends PCM in 48 KiB segments and firmware accepts later segments with
   `202 Accepted` while the current PCM segment is playing.
-- Each PCM segment includes `session`, `seq`, and `final` query parameters.
+- Each PCM segment includes `session`, `seq`, and `final` metadata. MCP sends
+  these as `X-Stackchan-Pcm-Session`, `X-Stackchan-Pcm-Seq`, and
+  `X-Stackchan-Pcm-Final` headers because ESP32 raw upload handling can lose
+  query parameters; query parameters remain accepted for compatibility.
   Firmware only queues segments for the active PCM session and logs the session
   id, segment size, final flag, and queued byte count. Missing, repeated, or
   skipped `seq` values are rejected and queued PCM is cleared. The expected
@@ -233,12 +236,19 @@ For lower latency speech, firmware also accepts `POST /play/pcm` with raw PCM:
   `M5.Speaker.playRaw()`, computes lip sync from PCM amplitude, and queues
   subsequent PCM segments while the current PCM segment is playing.
 - Playback buffer ownership stays in `playback_service.cpp`. Finished buffers
-  are retired for one additional completion cycle before being freed, so
-  `M5.Speaker.playRaw()` / `playWav()` internals are not handed memory that has
-  just been released.
+  are freed only after the M5Unified speaker task has been synchronously ended,
+  so `M5.Speaker.playRaw()` internals are not handed memory that has just been
+  released while I2S is still active.
 - The main loop never blocks for Wi-Fi reconnect. `serviceWiFi()` requests
   reconnects at intervals while HTTP, playback, and microphone services keep
   running.
+- WAV playback treats an active device-side download as a pending playback, so
+  additional `/play` requests are held in the logical audio queue instead of
+  being dropped by the lower-level download queue.
+- The logical WAV queue accepts up to 8 pending items. Additional `/play`
+  requests return `503 {"success":false,"error":"play queue full"}`.
+- Queued WAV items keep priority ordering; items with the same priority are
+  played FIFO by an internal sequence number.
 - After recording, the microphone service stores the generated WAV locally for
   MCP clients to fetch through `/audio`.
 - Playback timeout clears any queued PCM segments before resuming normal audio
