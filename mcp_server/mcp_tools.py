@@ -1,4 +1,7 @@
+import json
 import logging
+import os
+import shutil
 import time
 
 import requests
@@ -7,7 +10,7 @@ from . import audio_processing
 from .audio_server import AUDIO_DIR, audio_url, start_audio_server
 from .listening import capture_ready_recording, format_listen_result
 from .stackchan_client import PcmPlaybackError, StackchanClient, post_pcm_stream
-from .stackchan_config import VALID_FACES, StackchanConfig
+from .stackchan_config import VALID_FACES, StackchanConfig, config_summary
 from .telemetry import emit_event, new_request_id
 from .voice_inbox import clear_events, format_events, read_events
 
@@ -32,6 +35,45 @@ def format_timing_ms(timings: dict[str, object]) -> str:
         if value is not None:
             parts.append(f"{key}={value}ms")
     return " timing[" + " ".join(parts) + "]" if parts else ""
+
+
+def check_audio_dir() -> dict[str, object]:
+    return {
+        "path": str(AUDIO_DIR),
+        "exists": AUDIO_DIR.exists(),
+        "is_dir": AUDIO_DIR.is_dir(),
+        "writable": os.access(AUDIO_DIR, os.W_OK),
+    }
+
+
+def build_health_report(client: StackchanClient, config: StackchanConfig) -> dict[str, object]:
+    device: dict[str, object] = {
+        "base_url": client.base_url,
+        "ok": False,
+    }
+    try:
+        device["audio_status"] = client.audio_status()
+        device["ok"] = True
+    except Exception as exc:
+        device["audio_status_error"] = str(exc)
+    try:
+        device["playback_status"] = client.playback_status()
+        device["ok"] = bool(device.get("ok"))
+    except Exception as exc:
+        device["playback_status_error"] = str(exc)
+
+    report: dict[str, object] = {
+        "ok": bool(device.get("ok")),
+        "config": config_summary(config),
+        "dependencies": {
+            "ffmpeg": bool(shutil.which("ffmpeg")),
+            "edge_tts": bool(shutil.which(config.edge_tts_bin)),
+            "fish_audio_key": bool(config.fish_audio_key),
+        },
+        "audio_dir": check_audio_dir(),
+        "device": device,
+    }
+    return report
 
 
 def register_tools(mcp, client: StackchanClient, config: StackchanConfig, image_cls):
@@ -299,6 +341,16 @@ def register_tools(mcp, client: StackchanClient, config: StackchanConfig, image_
             return f"❌ Stack-chan offline (cannot reach {config.stackchan_ip})"
         except Exception as exc:
             return f"❌ Error: {exc}"
+
+    @mcp.tool()
+    def stackchan_health() -> str:
+        """Non-destructive health check for config, dependencies, and device status."""
+        return json.dumps(build_health_report(client, config), ensure_ascii=False, indent=2)
+
+    @mcp.tool()
+    def stackchan_config_summary() -> str:
+        """Return Stack-chan runtime config without secrets."""
+        return json.dumps(config_summary(config), ensure_ascii=False, indent=2)
 
     @mcp.tool()
     def stackchan_playback_status() -> str:

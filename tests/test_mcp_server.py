@@ -16,7 +16,12 @@ from mcp_server.audio_server import audio_url
 from mcp_server.listening import capture_ready_recording, format_listen_result
 from mcp_server.mcp_tools import can_stream_pcm, register_tools
 from mcp_server.stackchan_client import PcmPlaybackError, StackchanClient, post_pcm_stream
-from mcp_server.stackchan_config import PCM_SAMPLE_WIDTH, StackchanConfig, load_config
+from mcp_server.stackchan_config import (
+    PCM_SAMPLE_WIDTH,
+    PCM_SEGMENT_BYTES,
+    StackchanConfig,
+    load_config,
+)
 from mcp_server.voice_inbox import append_event, clear_events, format_events, read_events
 from scripts import (
     stackchan_frontend_session,
@@ -65,8 +70,22 @@ def make_config(**overrides):
         "save_pcm": False,
         "pcm_gain": 0.75,
         "pcm_limit": 0.90,
+        "pcm_segment_bytes": PCM_SEGMENT_BYTES,
+        "max_pcm_payload_bytes": 2 * 1024 * 1024,
         "pcm_declick_samples": 64,
         "pcm_zero_cross_window": 256,
+        "http_play_timeout": 5.0,
+        "http_audio_timeout": 10.0,
+        "http_status_timeout": 3.0,
+        "http_command_timeout": 5.0,
+        "http_snapshot_warmup_timeout": 5.0,
+        "http_snapshot_timeout": 10.0,
+        "playback_start_timeout": 5.0,
+        "playback_poll_interval": 0.2,
+        "pcm_segment_post_timeout": 30.0,
+        "fish_tts_timeout": 30.0,
+        "fish_asr_timeout": 15.0,
+        "fish_stream_chunk_bytes": 4096,
         "edge_tts_bin": "edge-tts",
         "fish_audio_key": "test-key",
         "fish_audio_model_zh": "zh-model",
@@ -134,6 +153,8 @@ def test_server_entrypoint_registers_expected_tools(monkeypatch):
         "stackchan_see",
         "stackchan_home",
         "stackchan_status",
+        "stackchan_health",
+        "stackchan_config_summary",
         "stackchan_playback_status",
         "stackchan_voice_inbox",
         "stackchan_voice_inbox_clear",
@@ -162,6 +183,73 @@ def test_stackchan_see_returns_fastmcp_serializable_image_content(monkeypatch, t
     assert_mcp_json_serializable(content)
 
 
+def test_registered_mcp_tools_return_json_serializable_content(monkeypatch, tmp_path):
+    from mcp.server.fastmcp import FastMCP, Image
+
+    class FakeClient:
+        base_url = "http://192.0.2.20:80"
+
+        def audio_status(self):
+            return {"ready": False, "mode": "mcp"}
+
+        def playback_status(self):
+            return {
+                "kind": "idle",
+                "playing": False,
+                "queued_pcm_segments": 0,
+                "queued_pcm_bytes": 0,
+                "audio_queue_depth": 0,
+                "download_queue_depth": 0,
+                "download_in_flight": False,
+                "mic_state": "idle",
+                "gesture": "none",
+                "free_heap": 123456,
+                "free_psram": 654321,
+            }
+
+        def move(self, x, y, speed):
+            return {"success": True}
+
+        def gesture(self, gesture):
+            return {"success": True}
+
+        def set_face(self, face):
+            return {"success": True}
+
+        def snapshot(self):
+            return b"\xff\xd8contract-jpeg\xff\xd9", 17
+
+        def get_audio(self):
+            raise AssertionError("contract test must not consume GET /audio")
+
+    monkeypatch.setattr("mcp_server.mcp_tools.AUDIO_DIR", tmp_path)
+    monkeypatch.setenv("STACKCHAN_VOICE_INBOX", str(tmp_path / "voice_inbox.jsonl"))
+    mcp = FastMCP("stackchan-contract")
+    register_tools(mcp, FakeClient(), make_config(), Image)
+
+    cases = {
+        "stackchan_listen": {"lang": "zh"},
+        "stackchan_move": {"x": 10, "y": 20, "speed": 30},
+        "stackchan_nod": {},
+        "stackchan_shake": {},
+        "stackchan_face": {"expression": "calm"},
+        "stackchan_see": {},
+        "stackchan_home": {},
+        "stackchan_status": {},
+        "stackchan_health": {},
+        "stackchan_config_summary": {},
+        "stackchan_playback_status": {},
+        "stackchan_voice_inbox": {"limit": 10},
+        "stackchan_voice_inbox_clear": {},
+    }
+
+    for name, arguments in cases.items():
+        tool = mcp._tool_manager.get_tool(name)
+        assert tool is not None, name
+        result = asyncio.run(tool.run(arguments, convert_result=True))
+        assert_mcp_json_serializable(result)
+
+
 def test_audio_url_uses_configured_host_and_port():
     assert audio_url("192.0.2.10", 5099, "hello.wav") == "http://192.0.2.10:5099/hello.wav"
 
@@ -178,6 +266,22 @@ def test_invalid_pcm_env_values_fall_back_to_defaults(monkeypatch):
     assert config.pcm_limit == 0.90
     assert config.pcm_declick_samples == 64
     assert config.pcm_zero_cross_window == 256
+
+
+def test_config_reads_pcm_and_timeout_env_aliases(monkeypatch):
+    monkeypatch.setenv("STACKCHAN_PCM_SEGMENT_BYTES", "32768")
+    monkeypatch.setenv("STACKCHAN_PCM_MAX_PAYLOAD_BYTES", "1048576")
+    monkeypatch.setenv("STACKCHAN_PLAYBACK_START_TIMEOUT_SEC", "7.5")
+    monkeypatch.setenv("STACKCHAN_PCM_SEGMENT_POST_TIMEOUT_SEC", "22")
+    monkeypatch.setenv("STACKCHAN_FISH_STREAM_CHUNK_BYTES", "8192")
+
+    config = load_config()
+
+    assert config.pcm_segment_bytes == 32768
+    assert config.max_pcm_payload_bytes == 1048576
+    assert config.playback_start_timeout == 7.5
+    assert config.pcm_segment_post_timeout == 22
+    assert config.fish_stream_chunk_bytes == 8192
 
 
 def test_voice_bridge_env_loader_does_not_override_existing_values(monkeypatch, tmp_path):
@@ -292,6 +396,7 @@ def test_voice_upload_recorder_page_exposes_upload_ui():
             wake_words=("小塔", "机器人"),
             upload_token="secret-token-for-test",
             upload_rate_per_minute=12,
+            upload_rate_window_seconds=60,
             allowed_origins=(),
         )
     )
@@ -787,6 +892,30 @@ def test_listen_does_not_consume_audio_when_not_ready():
     register_tools(mcp, FakeClient(), make_config(), lambda data, format: {"data": data, "format": format})
 
     assert "No recording ready" in mcp.tools["stackchan_listen"]()
+
+
+def test_health_check_is_non_destructive():
+    class FakeClient:
+        base_url = "http://192.0.2.20:80"
+
+        def audio_status(self):
+            return {"ready": True, "mode": "mcp"}
+
+        def playback_status(self):
+            return {"playing": False, "kind": "idle"}
+
+        def get_audio(self):
+            raise AssertionError("health check must not consume GET /audio")
+
+    mcp = FakeFastMCP()
+    register_tools(mcp, FakeClient(), make_config(), lambda data, format: {"data": data, "format": format})
+
+    report = json.loads(mcp.tools["stackchan_health"]())
+
+    assert report["ok"] is True
+    assert report["device"]["audio_status"]["ready"] is True
+    assert report["device"]["playback_status"]["playing"] is False
+    assert report["config"]["pcm"]["segment_bytes"] == PCM_SEGMENT_BYTES
 
 
 def test_capture_ready_recording_does_not_consume_audio_when_not_ready(tmp_path):
